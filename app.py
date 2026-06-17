@@ -965,15 +965,217 @@ def page_distributions():
 # ═══════════════════════════════════════════════════════════════════════════
 # PAGE 5 — REGRESSION & CORRELATION
 # ═══════════════════════════════════════════════════════════════════════════
-
-
 def page_regression():
-    st.title("≈ Regression & Correlation")
-    st.info("🔧 OLS regression explorer coming in next commit")
+    st.markdown(
+        """
+        <div class="page-header">
+            <h1>≈ Regression Analysis Visual</h1>
+            <p>OLS regression — the BLUE estimator (Best Linear Unbiased Estimator) by Gauss-Markov theorem.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_ctrl, col_main = st.columns([1, 3])
+
+    with col_ctrl:
+        st.markdown("#### Data Generation")
+        n_samples = st.slider("Sample Size (n)", 20, 500, 150)
+        true_corr = st.slider("True Correlation (ρ)", -0.99, 0.99, 0.75, 0.01)
+        noise_level = st.slider("Noise Level", 0.1, 3.0, 0.8, 0.1)
+        seed = st.slider("Random Seed", 0, 100, 42)
+
+    # ── Generate bivariate normal data ────────────────────────────────────
+    rng = np.random.default_rng(seed)
+    cov_mat = np.array([[1.0, true_corr], [true_corr, 1.0]])
+    L = np.linalg.cholesky(cov_mat)
+    raw = rng.standard_normal((n_samples, 2))
+    data = raw @ L.T
+    x_data = data[:, 0]
+    y_data = data[:, 1] * noise_level
+
+    # ── OLS regression ────────────────────────────────────────────────────
+    X_design = np.column_stack([np.ones(n_samples), x_data])
+    beta = np.linalg.lstsq(X_design, y_data, rcond=None)[0]
+    intercept, slope = beta[0], beta[1]
+    y_fitted = X_design @ beta
+    residuals = y_data - y_fitted
+
+    # R² and Pearson r
+    ss_res = np.sum(residuals**2)
+    ss_tot = np.sum((y_data - np.mean(y_data)) ** 2)
+    r_sq = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    pearson_r, p_value = stats.pearsonr(x_data, y_data)
+
+    # Confidence interval band (95%)
+    x_line = np.linspace(x_data.min(), x_data.max(), 300)
+    y_line = intercept + slope * x_line
+    n = n_samples
+    x_mean = np.mean(x_data)
+    se_line = (
+        np.sqrt(ss_res / (n - 2))
+        * np.sqrt(1 / n + (x_line - x_mean) ** 2 / np.sum((x_data - x_mean) ** 2))
+    )
+    t_crit = stats.t.ppf(0.975, df=n - 2)
+    ci_upper = y_line + t_crit * se_line
+    ci_lower = y_line - t_crit * se_line
+
+    # Q-Q plot
+    sorted_residuals = np.sort(residuals)
+    theoretical_quantiles = stats.norm.ppf(
+        np.linspace(0.01, 0.99, len(sorted_residuals))
+    )
+
+    with col_main:
+        c1, c2, c3 = st.columns(3)
+
+        # Chart 1: Scatter + regression line
+        with c1:
+            fig_scatter = go.Figure()
+            fig_scatter.add_trace(
+                go.Scatter(
+                    x=x_data, y=y_data,
+                    mode="markers",
+                    marker=dict(
+                        color=COLORS["primary"], size=5, opacity=0.65,
+                        line=dict(color="#ffffff", width=0.3),
+                    ),
+                    name="Data",
+                )
+            )
+            # CI band
+            fig_scatter.add_trace(
+                go.Scatter(
+                    x=np.concatenate([x_line, x_line[::-1]]),
+                    y=np.concatenate([ci_upper, ci_lower[::-1]]),
+                    fill="toself",
+                    fillcolor="rgba(6,182,212,0.15)",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    name="95% CI",
+                    showlegend=True,
+                )
+            )
+            fig_scatter.add_trace(
+                go.Scatter(
+                    x=x_line, y=y_line,
+                    mode="lines",
+                    line=dict(color=COLORS["secondary"], width=2.5),
+                    name=f"OLS Fit",
+                )
+            )
+            fig_scatter.update_layout(
+                template=PLOTLY_TEMPLATE,
+                title=f"<b>Scatter + OLS</b>  R²={r_sq:.4f}",
+                xaxis_title="X",
+                yaxis_title="Y",
+                height=380,
+                plot_bgcolor="#0f0f1a",
+                paper_bgcolor="#1a1a2e",
+                legend=dict(font=dict(size=10), x=0, y=1),
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        # Chart 2: Residual plot
+        with c2:
+            fig_resid = go.Figure()
+            fig_resid.add_trace(
+                go.Scatter(
+                    x=y_fitted, y=residuals,
+                    mode="markers",
+                    marker=dict(color=COLORS["accent"], size=5, opacity=0.65),
+                    name="Residuals",
+                )
+            )
+            fig_resid.add_hline(
+                y=0, line_dash="dash", line_color=COLORS["danger"], line_width=1.5
+            )
+            fig_resid.update_layout(
+                template=PLOTLY_TEMPLATE,
+                title="<b>Residual Plot</b>  (Fitted vs Residuals)",
+                xaxis_title="Fitted Values",
+                yaxis_title="Residuals",
+                height=380,
+                plot_bgcolor="#0f0f1a",
+                paper_bgcolor="#1a1a2e",
+            )
+            st.plotly_chart(fig_resid, use_container_width=True)
+
+        # Chart 3: Q-Q plot
+        with c3:
+            fig_qq = go.Figure()
+            # Reference line
+            qq_min = min(theoretical_quantiles.min(), sorted_residuals.min())
+            qq_max = max(theoretical_quantiles.max(), sorted_residuals.max())
+            fig_qq.add_trace(
+                go.Scatter(
+                    x=[qq_min, qq_max], y=[qq_min, qq_max],
+                    mode="lines",
+                    line=dict(color=COLORS["danger"], width=1.5, dash="dash"),
+                    name="Normal Line",
+                )
+            )
+            fig_qq.add_trace(
+                go.Scatter(
+                    x=theoretical_quantiles,
+                    y=sorted_residuals,
+                    mode="markers",
+                    marker=dict(
+                        color=COLORS["success"], size=5, opacity=0.65,
+                        line=dict(color="#ffffff", width=0.3),
+                    ),
+                    name="Residuals",
+                )
+            )
+            fig_qq.update_layout(
+                template=PLOTLY_TEMPLATE,
+                title="<b>Q-Q Plot</b>  (Normality Check)",
+                xaxis_title="Theoretical Quantiles",
+                yaxis_title="Sample Quantiles",
+                height=380,
+                plot_bgcolor="#0f0f1a",
+                paper_bgcolor="#1a1a2e",
+            )
+            st.plotly_chart(fig_qq, use_container_width=True)
+
+    # ── Stats ─────────────────────────────────────────────────────────────
+    st.markdown("#### OLS Estimation Results")
+    r1, r2, r3, r4, r5 = st.columns(5)
+    for col, lbl, val in [
+        (r1, "Slope (β₁)", f"{slope:.4f}"),
+        (r2, "Intercept (β₀)", f"{intercept:.4f}"),
+        (r3, "R² Score", f"{r_sq:.4f}"),
+        (r4, "Pearson r", f"{pearson_r:.4f}"),
+        (r5, "p-value", f"{p_value:.4e}"),
+    ]:
+        col.markdown(
+            f"""<div class="metric-card"><div class="label">{lbl}</div>
+            <div class="value">{val}</div></div>""",
+            unsafe_allow_html=True,
+        )
+
+    normality_test = stats.shapiro(residuals[:min(n_samples, 200)])
+    sw_stat, sw_p = normality_test
+    st.markdown(
+        f"""
+        <div class="math-insight" style="margin-top:20px;">
+            <b style="color:#06b6d4;">📐 Mathematical Insight</b><br><br>
+            <b>OLS estimator:</b> β̂ = (XᵀX)⁻¹Xᵀy minimizes the residual sum of squares Σ(yᵢ − ŷᵢ)².
+            By the <b>Gauss-Markov theorem</b>, β̂ is BLUE under homoscedasticity and zero-mean errors.<br><br>
+            <b>Shapiro-Wilk test</b> for residual normality: W = {sw_stat:.4f},
+            p = {sw_p:.4f} —
+            {"✅ <span style='color:#10b981;'>Fail to reject normality</span> (residuals appear normal)" if sw_p > 0.05 else "⚠️ <span style='color:#f59e0b;'>Evidence against normality</span> — check Q-Q plot for deviations"}.
+            <br><br>
+            The <b>Q-Q plot</b> assesses whether residuals follow a Normal distribution.
+            Points hugging the diagonal line indicate well-behaved, normally distributed residuals —
+            a core assumption for valid t-tests and confidence intervals.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-# --- Router ---
-if page == "∼ Fourier Transform":
+# ─── Router ─────────────────────────────────────────────────────────────────
+if page == "〜 Fourier Transform":
     page_fourier()
 elif page == "λ Eigenvalues & Eigenvectors":
     page_eigenvalues()
