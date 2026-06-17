@@ -6,6 +6,8 @@ An interactive Streamlit application showcasing advanced mathematical concepts t
 **Affiliation:** PhD Scholar, Department of Computer Science & Engineering, IIT Kharagpur  
 **Background:** M.Sc. Mathematics (BHU) | M.Tech CSE (IIT Kharagpur)
 
+🚀 **Live Demo:** [yogesh-math-explorer.streamlit.app](https://yogesh-math-explorer.streamlit.app)
+
 ---
 
 ## Overview
